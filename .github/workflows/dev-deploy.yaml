@@ -60,6 +60,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify Kubernetes Context
         shell: bash
@@ -85,20 +88,37 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "Event: $EVENT_NAME"
+          echo "Before: $BEFORE_SHA"
+          echo "Current: $CURRENT_SHA"
+
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "Manual deployment: selecting all application charts"
+            echo "Manual run: deploying all application charts"
+
             CHARTS=$(find charts -mindepth 1 -maxdepth 1 \
               -type d -exec basename {} \; | sort)
+
           elif [ -z "$BEFORE_SHA" ] || \
-               [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            echo "No usable previous commit: selecting all charts"
+               [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] || \
+               ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+
+            echo "Previous commit unavailable."
+            echo "Falling back to all application charts."
+
             CHARTS=$(find charts -mindepth 1 -maxdepth 1 \
               -type d -exec basename {} \; | sort)
+
           else
+            echo "Detecting changed charts..."
+
             CHARTS=$(git diff --name-only \
               "$BEFORE_SHA" "$CURRENT_SHA" -- charts/ \
-              | cut -d/ -f2 | sort -u)
+              | cut -d/ -f2 \
+              | sort -u)
           fi
+
+          echo "Selected charts:"
+          printf '%s\n' "$CHARTS"
 
           {
             echo "charts<<EOF"
