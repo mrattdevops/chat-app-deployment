@@ -1,0 +1,42 @@
+name: Test Self-hosted Runner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-runner:
+    name: Verify Kubernetes Access
+    runs-on:
+      - self-hosted
+      - macOS
+      - chat-app-dev
+
+    timeout-minutes: 5
+
+    steps:
+      - name: Check Runner Environment
+        run: |
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $RUNNER_OS"
+          uname -m
+
+      - name: Check Kubernetes Context
+        run: |
+          kubectl config current-context
+          kubectl cluster-info
+
+      - name: Check Kubernetes Nodes
+        run: |
+          kubectl get nodes
+
+      - name: Check Dev Namespace
+        run: |
+          kubectl get pods -n chat-app-dev
+
+      - name: Check Helm
+        run: |
+          helm version --short
+          helm list -n chat-app-dev
