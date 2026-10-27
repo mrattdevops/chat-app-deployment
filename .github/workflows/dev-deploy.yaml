@@ -1,0 +1,140 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - ".github/workflows/dev-deploy.yaml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chat-app-dev-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Dev Helm Charts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.2.3
+
+      - name: Helm Lint and Template
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for chart in charts/*; do
+            [ -f "$chart/Chart.yaml" ] || continue
+
+            helm lint "$chart" \
+              -f "$chart/values-dev.yaml"
+
+            helm template "$(basename "$chart")" "$chart" \
+              -n chat-app-dev \
+              -f "$chart/values-dev.yaml" > /dev/null
+          done
+
+  deploy:
+    name: Deploy Changed Charts to Dev
+    needs: validate
+
+    runs-on:
+      - self-hosted
+      - macOS
+      - chat-app-self-hosted-runner
+
+    environment: development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Kubernetes Context
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONTEXT=$(kubectl config current-context)
+
+          if [ "$CONTEXT" != "kind-multi-node-cluster" ]; then
+            echo "Unexpected Kubernetes context: $CONTEXT"
+            exit 1
+          fi
+
+          kubectl get namespace chat-app-dev
+
+      - name: Detect Changed Charts
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Manual deployment: selecting all application charts"
+            CHARTS=$(find charts -mindepth 1 -maxdepth 1 \
+              -type d -exec basename {} \; | sort)
+          elif [ -z "$BEFORE_SHA" ] || \
+               [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "No usable previous commit: selecting all charts"
+            CHARTS=$(find charts -mindepth 1 -maxdepth 1 \
+              -type d -exec basename {} \; | sort)
+          else
+            CHARTS=$(git diff --name-only \
+              "$BEFORE_SHA" "$CURRENT_SHA" -- charts/ \
+              | cut -d/ -f2 | sort -u)
+          fi
+
+          {
+            echo "charts<<EOF"
+            echo "$CHARTS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Changed Charts
+        shell: bash
+        env:
+          CHARTS: ${{ steps.changes.outputs.charts }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$CHARTS" ]; then
+            echo "No application chart changes detected"
+            exit 0
+          fi
+
+          while IFS= read -r chart; do
+            [ -n "$chart" ] || continue
+            [ -f "charts/$chart/Chart.yaml" ] || continue
+
+            echo "Deploying $chart"
+
+            helm upgrade --install "$chart" \
+              "./charts/$chart" \
+              --namespace chat-app-dev \
+              -f "./charts/$chart/values-dev.yaml" \
+              --wait \
+              --timeout 5m
+
+          done <<< "$CHARTS"
+
+      - name: Verify Deployment
+        shell: bash
+        run: |
+          kubectl get deployments -n chat-app-dev
+          helm list -n chat-app-dev
