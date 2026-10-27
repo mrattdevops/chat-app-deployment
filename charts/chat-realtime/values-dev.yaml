@@ -1,8 +1,6 @@
 replicaCount: 1
-
 config:
-  ALLOWED_ORIGIN: "http://localhost:5173"
-
+  ALLOWED_ORIGIN: http://localhost:5173
 resources:
   requests:
     cpu: 50m
@@ -10,6 +8,5 @@ resources:
   limits:
     cpu: 250m
     memory: 256Mi
-
 image:
-  tag: "344be7c1"
+  tag: ca3801c8

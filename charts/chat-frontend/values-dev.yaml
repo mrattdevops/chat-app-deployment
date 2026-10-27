@@ -1,4 +1,3 @@
 replicaCount: 1
-
 image:
-  tag: "344be7c1"
+  tag: ca3801c8
