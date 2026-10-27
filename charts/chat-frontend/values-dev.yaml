@@ -1,1 +1,4 @@
 replicaCount: 1
+
+image:
+  tag: "344be7c1"

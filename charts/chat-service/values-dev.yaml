@@ -7,3 +7,6 @@ resources:
   limits:
     cpu: 250m
     memory: 256Mi
+
+image:
+  tag: "344be7c1"
