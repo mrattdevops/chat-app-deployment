@@ -1,0 +1,225 @@
+
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chat-app-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Production Helm Charts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.2.3
+
+      - name: Validate Production Charts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for chart in infrastructure/postgres infrastructure/redis charts/*; do
+            [ -f "$chart/Chart.yaml" ] || continue
+
+            echo "Validating $chart"
+
+            helm lint "$chart" \
+              -f "$chart/values-prod.yaml"
+
+            helm template "$(basename "$chart")" "$chart" \
+              -n chat-app-prod \
+              -f "$chart/values-prod.yaml" > /dev/null
+          done
+
+  deploy:
+    name: Deploy Production
+    needs: validate
+
+    runs-on:
+      - self-hosted
+      - macOS
+      - chat-app-self-hosted-runner
+
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify Kubernetes Context
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONTEXT=$(kubectl config current-context)
+
+          if [ "$CONTEXT" != "kind-multi-node-cluster" ]; then
+            echo "Unexpected Kubernetes context: $CONTEXT"
+            exit 1
+          fi
+
+          kubectl get namespace chat-app-prod
+    
+      - name: Verify Production Deployment Source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "ERROR: Production must be manually triggered"
+            exit 1
+          fi
+
+          if [ "$REF_NAME" != "main" ]; then
+            echo "ERROR: Production deployment only allowed from main"
+            exit 1
+          fi
+
+          echo "Production deployment source verified"
+
+
+
+      - name: Verify Production Secret Keys
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_secret() {
+            local name="$1"
+            shift
+
+            for key in "$@"; do
+              if ! kubectl get secret "$name" \
+                -n chat-app-prod \
+                -o json | jq -e --arg key "$key" \
+                '.data[$key] | strings | length > 0' > /dev/null; then
+                echo "Missing secret/key: $name / $key"
+                exit 1
+              fi
+            done
+          }
+
+          check_secret postgres-secret POSTGRES_PASSWORD
+          check_secret chat-auth-secrets DATABASE_URL JWT_SECRET
+          check_secret chat-service-secrets DATABASE_URL JWT_SECRET
+          check_secret chat-realtime-secrets JWT_SECRET
+
+          echo "Production secret keys verified"
+
+
+      - name: Verify Production Deployment Source
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "Production deployment must be manually triggered"
+            exit 1
+          fi
+
+          if [ "$REF_NAME" != "main" ]; then
+            echo "Production deployment is only allowed from main"
+            exit 1
+          fi
+
+          echo "Production deployment source verified"
+    
+    
+      - name: Verify Production Image Tags
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for chart in chat-auth chat-service chat-realtime chat-frontend; do
+            tag=$(helm template "$chart" "charts/$chart" \
+              -n chat-app-prod \
+              -f "charts/$chart/values-prod.yaml" \
+              | awk '/^[[:space:]]*image:/ {print $2; exit}' \
+              | tr -d '"')
+
+            if [ -z "$tag" ]; then
+              echo "ERROR: Missing rendered image for $chart"
+              exit 1
+            fi
+
+            echo "$chart => $tag"
+          done
+
+
+      - name: Deploy PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          helm upgrade --install postgres \
+            ./infrastructure/postgres \
+            --namespace chat-app-prod \
+            -f ./infrastructure/postgres/values-prod.yaml \
+            --atomic \
+            --wait \
+            --timeout 5m
+
+      - name: Deploy Redis
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          helm upgrade --install redis \
+            ./infrastructure/redis \
+            --namespace chat-app-prod \
+            -f ./infrastructure/redis/values-prod.yaml \
+            --atomic \
+            --wait \
+            --timeout 5m
+
+      - name: Deploy Applications
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for chart in \
+            chat-auth \
+            chat-service \
+            chat-realtime \
+            chat-frontend
+          do
+            echo "Deploying $chart"
+
+            helm upgrade --install "$chart" \
+              "./charts/$chart" \
+              --namespace chat-app-prod \
+              -f "./charts/$chart/values-prod.yaml" \
+              --atomic \
+              --wait \
+              --timeout 5m
+          done
+
+      - name: Verify Production Deployments
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl get pods -n chat-app-prod
+          kubectl get deployments,statefulsets -n chat-app-prod
+          kubectl get pvc -n chat-app-prod
+          helm list -n chat-app-prod

@@ -7,3 +7,6 @@ resources:
   limits:
     cpu: 500m
     memory: 512Mi
+
+image:
+  tag: "ca3801c8"

@@ -1,1 +1,4 @@
 replicaCount: 2
+
+image:
+  tag: "ca3801c8"
