@@ -1,0 +1,27 @@
+replicaCount: 1
+
+image:
+  repository: mrattdevops/chat-app-realtime
+  tag: "3c186b75"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8083
+
+config:
+  HTTP_ADDR: ":8083"
+  REDIS_URL: "redis://redis:6379/0"
+  JWT_ISSUER: "chat-auth"
+  ALLOWED_ORIGIN: "http://localhost:5173"
+
+secrets:
+  existingSecret: chat-realtime-secrets
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi

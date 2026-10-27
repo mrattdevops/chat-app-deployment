@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  PORT: {{ .Values.config.PORT | quote }}
+  REDIS_URL: {{ .Values.config.REDIS_URL | quote }}

@@ -1,0 +1,25 @@
+image:
+  repository: postgres
+  tag: "17"
+  pullPolicy: IfNotPresent
+
+database:
+  name: chatapp
+  user: chatapp
+  existingSecret: postgres-secret
+
+service:
+  name: postgres
+  port: 5432
+
+storage:
+  size: 2Gi
+  storageClassName: standard
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi

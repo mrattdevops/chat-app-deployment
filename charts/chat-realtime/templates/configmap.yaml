@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  HTTP_ADDR: {{ .Values.config.HTTP_ADDR | quote }}
+  REDIS_URL: {{ .Values.config.REDIS_URL | quote }}
+  JWT_ISSUER: {{ .Values.config.JWT_ISSUER | quote }}
+  ALLOWED_ORIGIN: {{ .Values.config.ALLOWED_ORIGIN | quote }}

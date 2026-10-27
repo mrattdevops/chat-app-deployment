@@ -1,0 +1,25 @@
+replicaCount: 1
+
+image:
+  repository: mrattdevops/chat-app-chat
+  tag: "3c186b75"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8082
+
+config:
+  PORT: "8082"
+  REDIS_URL: "redis://redis:6379/"
+
+secrets:
+  existingSecret: chat-service-secrets
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
