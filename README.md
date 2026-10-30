@@ -1,3 +1,7 @@
+## CI/CD Architecture
+
+![GitOps CI/CD Architecture](docs/images/cicd-architecture.png)
+
 # Kubernetes Microservices Chat Application — GitOps CI/CD
 
 An end-to-end DevOps portfolio project demonstrating automated container builds, GitOps-style Kubernetes deployments, environment separation, release management, and disaster recovery.
