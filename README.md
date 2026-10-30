@@ -139,6 +139,12 @@ https://gitlab.com/mrattdevops/chat-app
 **Kubernetes Deployment and CI/CD:**  
 https://github.com/mrattdevops/chat-app-deployment
 
+## Technical Documentation
+
+- [CI/CD Workflow](docs/cicd-workflow.md)
+- [Kubernetes Deployment Guide](docs/deployment-guide.md)
+- [Helm Rollback and PostgreSQL Recovery](docs/rollback-and-recovery.md)
+
 ## Project Outcomes
 
 This project demonstrates practical experience with:
